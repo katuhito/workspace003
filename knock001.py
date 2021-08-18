@@ -70,6 +70,49 @@ join_data.isnull().sum()
 join_data.describe
 
 
+#データの範囲（日付）
+print(join_data["payment_date"].min())
+print(join_data["payment_date"].max())
+
+
+#月別でデータを集計=>payment_dateのデータ型を確認
+join_data.dtypes
+
+#payment_date=>datetime型に変更して、年月列の作成を行う。
+join_data["payment_date"] = pd.to_datetime(join_data["payment_date"])
+join_data["payment_month"] = join_data["payment_date"].dt.strftime("%Y%m")
+join_data[["payment_date", "payment_month"]].head()
+
+#月別売り上げの集計結果
+join_data.groupby("payment_month").sum()["price"]
+
+
+#月別かつ商品別の売り上げの合計値、数量を表示する
+join_data.groupby(["payment_month", "item_name"]).sum()[["price", "quantity"]]
+
+#pivot_tableを使用して集計する
+pd.pivot_table(join_data, index='item_name', columns='payment_month', values=['price', 'quantity'], aggfunc='sum')
+
+#商品別の売上推移を可視化する=>グラフ用データ作成
+graph_data = pd.pivot_table(join_data, index='payment_month', columns='item_name', values='price', aggfunc='sum')
+graph_data.head()
+
+#matplotlibを用いて描画
+import matplotlib.pyplot as plt
+%matplotlib inline
+plt.plot(list(graph_data.index), graph_data["PC-A"], label='PC-A')
+plt.plot(list(graph_data.index), graph_data["PC-B"], label='PC-B')
+plt.plot(list(graph_data.index), graph_data["PC-C"], label='PC-C')
+plt.plot(list(graph_data.index), graph_data["PC-D"], label='PC-D')
+plt.plot(list(graph_data.index), graph_data["PC-E"], label='PC-E')
+plt.legend()
+
+
+
+
+
+
+
 
 
 
