@@ -101,6 +101,50 @@ print(len(kokyaku_data))
 flg_is_serial = kokyaku_data["登録日"].astype('str').str.isdigit()
 flg_is_serial.sum()
 
+#売上履歴と顧客台帳を結合し、集計のベースとなるデータを作成する
+join_data = pd.merge(uriage_data, kokyaku_data, left_on="customer_name", right_on="顧客名", how="left")
+join_data = join_data.drop("customer_name", axis=1)
+join_data
+
+#データを整形
+dump_data = join_data[["purchase_date", "purchase_month", "item_name", "item_price", "顧客名", "かな", "地域", "メールアドレス", "登録日"]]
+dump_data
+
+#データをダンプ(出力)
+dump_data.to_csv("dump_data.csv", index=False)
+
+#ダンプファイル読み込み
+import_data = pd.read_csv("dump_data.csv")
+import_data
+
+#purchase_monthを縦軸に、商品毎の集計
+byItem = import_data.pivot_table(index="purchase_month", columns="item_name", aggfunc="size", fill_value=0)
+byItem
+
+#purchase_monthを縦軸に、売上金額、顧客、地域の集計を行う
+byPrice = import_data.pivot_table(index="purchase_month", columns="item_name", values="item_price", aggfunc="sum", fill_value=0)
+byPrice
+
+#顧客名
+byCustomer = import_data.pivot_table(index="purchase_month", columns="顧客名", aggfunc="size", fill_value=0)
+byCustomer
+
+#購入年月、地域における販売数
+byRegion = import_data.pivot_table(index="purchase_month", columns="地域", aggfunc="size", fill_value=0)
+byRegion
+
+#集計期間で購入していないユーザー
+away_data = pd.merge(uriage_data, kokyaku_data, left_on="customer_name", right_on="顧客名", how="right")
+away_data[away_data["purchase_date"].isnull()][["顧客名", "メールアドレス", "登録日"]]
+
+
+
+
+
+
+
+
+
 
 
 
