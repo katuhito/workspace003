@@ -142,6 +142,76 @@ customer_join.to_csv("customer_join.csv", index=False)
 
 
 
+#顧客の行動を予測する
+#データを読み込んで確認
+import pandas as pd
+uselog = pd.read_csv('./data003/use_log.csv')
+uselog.isnull().sum()
+#欠損値
+customer = pd.read_csv('customer_join.csv')
+customer.isnull().sum()
+
+"""顧客データをグループ化する"""
+#退会しているかどうかではなく、利用履歴に基づいたグループ化を行う
+#その場合、あらかじめ決められた正解がないので、教師なし学習のクラスタリングを用いる。
+#顧客のグループ化を行う=>customerデータを用いる。
+#クラスタリングに用いる変数=>mean, median, max, min,membership_period
+#必要な変数に絞り込む
+customer_clustering = customer[["mean", "median", "max", "min", "membership_period"]]
+customer_clustering.head()
+
+#クラスタリングを行う=>K-means法
+#変数間の距離をベースにグループ化を行う。
+#あらかじめグルーピングしたい数を指定する必要がある。ここでは4つのグループを指定する
+#月内利用回数：[mean,median,max,min]と最大値が47：[membership_period]ではデータの大きさが異なる。その場合、membership_periodに引っ張られてしまうので、標準化が必要になる。
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+sc = StandardScaler()
+customer_clustering_sc = sc.fit_transform(customer_clustering)
+
+kmeans = KMeans(n_clusters=4, random_state=0)
+clusters = kmeans.fit(customer_clustering_sc)
+customer_clustering["cluster"] = clusters.labels_
+print(customer_clustering["cluster"].unique())
+customer_clustering.head()
+
+#クラスタリング結果を分析
+#グループ毎のデータ件数を表示=>分析を容易にするために列名を変更
+customer_clustering.columns = ["月内平均値", "月内中央値", "月内最大値", "月内最小値", "会員期間", "cluster"]
+customer_clustering.groupby("cluster").count()
+
+#クラスタリングの結果を分析
+#上記の結果では、count()によりデータ件数を取っているので、どの列も同じになっている。
+#顧客数の順位は、グループ3,1,0,2となっている。
+#ここでグループ毎の平均値を取る
+customer_clustering.groupby("cluster").mean()
+
+"""簡易的にクラスタリング結果を可視化する"""
+#クラスタリングに使用した変数の数は5つである。
+#この5つの変数を2次元助言うにプロットする場合、次元削除を行う。
+#次元削除とは、教師なし学習の一種で、情報をなるべく失わないように変数を削除して、新しい軸を作り出すことである。これによって、5つの変数を2つの変数で表現することができ、グラフ化することが可能になる。
+#主成分分析：ここでは、次元削除の代表的な手法である主成分分析を用いる。主成分分析を行うには、前出で用いた標準化したデータを用いる。
+
+from sklearn.decomposition import PCA
+X = customer_clustering_sc
+pca = PCA(n_components=2)
+pca.fit(X)
+x_pca = pca.transform(X)
+pca_df = pd.DataFrame(x_pca)
+pca_df["cluster"] = customer_clustering["cluster"]
+
+import matplotlib.pyplot as plt
+%matplotlib inline
+for i in customer_clustering["cluster"].unique():
+    tmp = pca_df.loc[pca_df["cluster"]==i]
+    plt.scatter(tmp[0], tmp[1])
+    
+
+
+
+
+
+
 
 
 
