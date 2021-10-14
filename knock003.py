@@ -207,6 +207,19 @@ for i in customer_clustering["cluster"].unique():
     plt.scatter(tmp[0], tmp[1])
     
 
+"""クラスタリング結果を基に退会顧客の傾向を把握する"""
+#クラスタリングによって4つのグループに分割されたが、これらのグループの継続顧客と退会顧客の数を調査し、集計する。
+#最初に、退会顧客を特定するためにis_deleted列をcustomer_clusteringに追加し、cluster,is_deleted毎に集計を行う。
+
+#グループ毎の退会／継続顧客の集計
+customer_clustering = pd.concat([customer_clustering, customer], axis=1)
+customer_clustering.groupby(["cluster", "is_deleted"], as_index=False).count()[["cluster", "is_deleted", "customer_id"]]
+
+#定期利用(Flg)しているかどうか
+customer_clustering.groupby(["cluster", "routine_flg"], as_index=False).count()[["cluster", "routine_fig", "customer_id"]]
+]
+
+
 
 
 
