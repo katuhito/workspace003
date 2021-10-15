@@ -217,7 +217,109 @@ customer_clustering.groupby(["cluster", "is_deleted"], as_index=False).count()[[
 
 #定期利用(Flg)しているかどうか
 customer_clustering.groupby(["cluster", "routine_flg"], as_index=False).count()[["cluster", "routine_fig", "customer_id"]]
-]
+
+
+
+"""翌月の利用回数予測を行うための準備を行う"""
+#顧客の過去の行動データから翌月の利用回数を予測するためには、教師あり学習の回帰を用いる。
+#ここでは各6ヶ月の利用データを用いて、翌月の利用データを予測する。
+
+#当月が2018年10月で2018年11月の利用回数を予測する。
+#予測が目的なので、2018年5月〜10月の6ヶ月の利用データと2018年11月の利用回数を教師データとして学習に使うことにする。
+#つまり、これまでの顧客データとは違いある特定の顧客の特定の月のデータを作成する必要がある。
+
+#最初に，uselogデータを用いて年月、顧客毎に集計を行う。
+uselog["usedate"] = pd.to_datetime(uselog["usedate"])
+uselog["年月"] = uselog["usedate"].dt.strftime("%Y%m")
+uselog_months = uselog.groupby(["年月", "customer_id"], as_index=False).count()
+uselog_months.rename(columns={"log_id":"count"}, inplace=True)
+del uselog_months["usedate"]
+uselog_months.head()
+
+#データを整形
+year_months = list(uselog_months["年月"].unique())
+predict_data = pd.DateFrame()
+for i in range(6, len(year_months)):
+    tmp = uselog_months.loc[uselog_months["年月"]==year_months[i]]
+    tmp.rename(columns={"count":"count_pred"}, inplace=True)
+    for j in range(1, 7):
+        tmp_before = uselog_months.loc[uselog_months["年月"]==year_months[i-j]]
+        del tmp_before["年月"]
+        tmp_before.rename(columns={"count":"count_{}".format(j-1)}, inplace=True)
+        tmp = pd.merge(tmp, tmp_before, on="customer_id", how="left")
+    predict_data = pd.concat([predict_data, tmp], ignore_index=True)
+predict_data.head()
+
+#欠損値を含むデータを除去(dropna),indexを初期化
+predict_data = predict_data.dropna()
+predict_data = predict_data.reset_index(drop=True)
+predict_data.head()
+
+#特徴となるデータを付与する
+#会員期間を付与する
+#顧客データであるcustomerのstart_dateの列を先に作成したpredict_dataに結合する
+predict_data = pd.merge(predict_data, customer[["customer_id", "start_date"]], on = "customer_id", how = "left")
+predict_data.head()
+
+#年月とstart_dateの差から、会員期間を月単位で作成。
+predict_data["now_date"] = pd.to_datetime(predict_data["年月"], format="%Y%m")
+predict_data["start_date"] = pd.to_datetime(predict_data["start_date"])
+
+from dateutil.relativedelta import relativedelta
+predict_data["period"] = None
+for i in range(len(predict_data)):
+    delta = relativedelta(predict_data["now_date"][i], predict_data["start_date"][i])
+    predict_data["period"][i] = delta.years*12 + delta.months
+predict_data.head()
+
+"""来月の予測モデルを作成する。"""
+#2018年4月以降に新規に入った顧客に絞ってモデル作成を行う。
+#古い顧客は、入店時期のデータが存在せず、利用回数が安定状態にある可能性があるので、今回はデータ対象外として除外する。
+
+#線形回帰モデル=>LinerRegression(scikit-learn)と呼ばれる回帰モデルを使用する。
+#データを学習用データと評価用データに分割して、学習を行う。
+predict_data = predict_data.loc[predict_data["start_date"] >= pd.to_datetime("20180401")]
+
+from sklearn import linear_model
+import sklearn.model_selection
+
+model = linear_model.LinearRegression()
+X = predict_data[["count_0","count_1","count_2","count_3","count_4","count_5","period"]]
+y = predict_data["count_pred"]
+X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y)
+model.fit(X_train, y_train)
+
+#学習用データと評価用データに分ける理由
+#機械学習はあくまで未知のデータを予測するのが目的となる。そのため、学習に用いたデータに過剰適合してしまうと、未知なデータに対応できなくなり、過学習状態に陥る。なので、学習用データで学習を行い、モデルにとっては未知のデータである評価用データで精度の検証を行う。
+
+#精度の検証=>回帰予測モデル
+print(model.score(X_train, y_train))
+print(model.score(X_test, y_test))
+
+
+#モデルに寄与している変数を確認
+#説明変数毎に、寄与している変数の係数を出力してみる。
+coef = pd.DataFrame({"feature_names":X.columns, "coefficient":model.coef_})
+coef
+
+#来月の利用回数を予測する
+#2人の顧客の利用データを作成する。1人目は6ヶ月前から1ヶ月毎に7，8，6，4，4，3回来ている顧客で、2人目は6，4，3，3，2，2回来ている顧客で、どちらも8ヶ月の在籍期間の顧客の翌月の来店回数を予測する。
+#それぞれの顧客の利用履歴をリストに格納し、データを作成する。
+x1 = [3,4,4,6,8,7,8]
+x2 = [2,2,3,3,4,6,8]
+x_pred = [x1, x2]
+#modelを用いて予測を行う。
+model.predict(x_pred)
+
+#uselog_monthsデータを出力
+uselog_months.to_csv("use_log_months.csv", index=False)
+
+
+
+
+
+
+
 
 
 
