@@ -41,6 +41,7 @@ exit_uselog = pd.merge(uselog, exit_customer, on=["customer_id", "年月"], how=
 print(len(uselog))
 exit_uselog.head()
 
+
 #欠損値の除去
 exit_uselog = exit_uselog.dropna(subset=["name"])
 print(len(exit_uselog))
