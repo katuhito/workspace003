@@ -49,6 +49,56 @@ print(len(exit_uselog["customer_id"].unique()))
 exit_uselog.head()
 
 
+"""継続顧客のデータを作成する"""
+#継続顧客は、退会月があるわけではないので、どの年月のデータを作成しても良い。
+#データを継続顧客に絞り込んだ後、uselogデータに結合して作成する。
+
+conti_customer = customer.loc[customer["is_deleted"]==0]
+conti_uselog = pd.merge(uselog, conti_customer, on=["customer_id"], how="left")
+print(len(conti_uselog))
+conti_uselog = conti_uselog.dropna(subset=["name"])
+print(len(conti_uselog))
+
+#データをシャッフルして、重複を削除する。
+conti_uselog = conti_uselog.sample(frac=1).reset_index(drop=True)
+conti_uselog = conti_uselog.drop_duplicates(subset="customer_id")
+print(len(conti_uselog))
+conti_uselog.head()
+
+#継続顧客と退会顧客の結合
+predict_data = pd.concat([conti_uselog, exit_uselog], ignore_index=True)
+print(len(predict_data))
+predict_data.head()
+
+"""予測する月の在籍期間を作成"""
+#在籍期間のデータを変数として扱う。
+#在籍期間の列を追加する。
+predict_data["period"] = 0
+predict_data["now_date"] = pd.to_datetime(predict_data["年月"], format="%Y%m")
+predict_data["start_date"] = pd.to_datetime(predict_data["start_date"])
+for i in range(len(predict_data)):
+    delta = relativedelta(predict_data["now_date"][i], predict_data["start_date"][i])
+    predict_data["period"][i] = int(delta.years*12 + delta.months)
+predict_data.head()
+
+"""欠損値の除去"""
+#機械学習は欠損値があると対応できないので、欠損値は除外するか補間を行う必要がある。
+#ここでは、欠損値が含まれているデータの除去を行う。
+#最初に、欠損地の数を把握する。
+predict_data.isna().sum()
+
+#欠損値があるend_dateとexit_date,count_1のうち、end_date,exit_dateは退会顧客しか値を持っておらず、継続顧客は欠損値となる。そこで、count_1が欠損しているデータだけ除外する。
+#dropnaのsubsetで列を指定することで、特定の列が欠損しているデータの除外ができる。
+#欠損値は、end_date,exit_dateのみが欠損値を持つことが確認できる。
+predict_data = predict_data.dropna(subset=["count_1"])
+predict_data.isna().sum()
+
+
+
+
+
+
+
 
 
 
