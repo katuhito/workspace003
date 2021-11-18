@@ -94,6 +94,137 @@ predict_data = predict_data.dropna(subset=["count_1"])
 predict_data.isna().sum()
 
 
+"""文字列型の変数を処理できるように整形する"""
+#機械学習を行う際に、会員区分や性別などの文字列データにはどのように対応すれば良いか？
+#性別などのカテゴリー関連のデータをカテゴリカル変数と呼ぶ。これらの変数も機械学習を行ううえで重要な変数となってくる。これをダミー変数化という。
+#ダミー変数化=>
+
+#目的の予測に関するデータに絞り込む。
+#ここでは、1ヶ月前の利用回数count_1,カテゴリ変数であるcampaign_name,class_name,gender,定期利用のフラグであるroutine_flg,在籍期間のperiodを説明変数に使用し、目的変数は、退会フラグとなるis_deletedとなる。
+#教師あり学習の分類を行う。分類は回帰と違い、退会か継続かの目的変数に用いる。
+target_col = ["campaign_name", "class_name", "gender", "count_1", "routine_flg", "period", "is_deleted"]
+predict_data = predict_data[target_col]
+predict_data.head()
+
+#データを絞り込んだら、カテゴリカル変数を用いてダミー変数を作成する
+predict_data = pd.get_dummies(predict_data)
+predict_data.head()
+
+#pandasは、get_dummiesを使用すると一括でダミー変数化が可能である。文字列データを列に格納すると、簡単にダミー変数化ができる。
+#ダミー変数：例えば男性と女性を表現するうえで、0が男性で1が女性であるとき、女性(gender_F)に1が格納されていれば女性で、0であれば男性であると理解できるので、ここでわざわざ男性列(gender_M)を表現する必要はない。会員区分なども同じである。(データの重複を避ける)
+#ここで、campaign_name_通常,campaign_name_ナイト,gender_M列を削除する。
+del predict_data["campaign_name_通常"]
+del predict_data["class_name_ナイト"]
+del predict_data["gender_M"]
+predict_data.head()
+
+
+"""決定木を用いて退会予測モデルを作成してみる"""
+#退会予測モデルの構築
+#決定木アルゴリズムを用いる。=>機械学習によるモデル構築
+from sklearn.tree import DecisionTreeClassifier
+import sklearn.model_selection
+
+exit = predict_data.loc[predict_data["is_deleted"]==1]
+conti = predict_data.loc[predict_data["is_deleted"]==0].sample(len(exit))
+
+X = pd.concat([exit, conti], ignore_index=True)
+y = X["is_deleted"]
+del X["is_deleted"]
+X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y)
+
+model = DecisionTreeClassifier(random_state=0)
+model.fit(X_train, y_train)
+y_test_pred = model.predict(X_test)
+print(y_test_pred)
+
+#会員期間の追加
+#実際に正解との比較を行うために、実際の値y_testと一緒にデータフレームに格納しておく
+results_test = pd.DataFrame({"y_test":y_test, "y_pred":y_test_pred})
+results_test.head()
+
+
+"""予測モデルの評価して、モデルのチューニングを行う"""
+#先のresults_testデータを集計して正解率を出す。正解しているデータは、results_testデータのy_test列とy_pred列が一致しているデータの件数になる。その件数を、全体のデータ件数で割れば正解率が出る。
+correct = len(results_test.loc[results_test["y_test"]==results_test["y_pred"]])
+data_count = len(results_test)
+score_test = correct / data_count
+print(score_test)
+
+#機械学習の目的はあくまでも未知のデータへの適合であり、学習用データで予測して精度と評価用データで予測した精度の差が小さいのが理想である。
+#score関数を用いて精度を算出する。
+print(model.score(X_test, y_test))
+print(model.score(X_train, y_train))
+
+#決定木モデルの簡易化
+#学習用データが評価用データより高い精度を出す場合には、過学習傾向にあるといえる。その場合は、変数の見直しや、モデルのパラメータを変更したりするなどで理想的なモデルに近づける。
+#モデルのパラメータをチューニングする
+#決定木は、最もキレイに0と1を分割できる説明変数及びその件を探す作業を、木構造上に派生させていく手法である。
+#分割していく木構造の深さを浅くしてしまえばモデルは簡易化できる。
+X = pd.concat([exit, conti], ignore_index=True)
+y = X["is_deleted"]
+del X["is_deleted"]
+X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y)
+
+model = DecisionTreeClassifier(random_state=0, max_depth=5)
+model.fit(X_train, y_train)
+print(model.score(X_test, y_test))
+print(model.score(X_train, y_train))
+
+
+"""モデルに寄与している変数を確認する"""
+#モデルに寄与している変数の確認
+importance = pd.DataFrame({"feature_names": X.columns, "coefficient": model.feature_importances_})
+importance
+
+
+"""顧客の退会を予測"""
+#入力はモデル作成時に使用した説明変数となる。
+#1ヶ月前の利用回数3回、定期利用者、在籍期間10,キャンペーン区分は入会費無料、会員区分はオールタイム、性別は男性で作成で変数を定義していく。
+count_1 = 3
+routing_flg = 1
+period = 10
+campaign_name = "入会費無料"
+class_name = "オールタイム"
+gender = "M"
+
+#点数の定義後、データ加工を行う。カテゴリカル変数を用いる。
+if campaign_name == "入会費半額":
+    campaign_name_list = [1, 0]
+elif campaign_name == "入会費無料":
+    campaign_name_list = [0, 1]
+elif campaign_name == "通常":
+    campaign_name_list = [0, 0]
+if class_name == "オールタイム":
+    class_name_list = [1, 0]
+elif class_name == "デイタイム":
+    class_name_list = [0, 1]
+elif class_name == "ナイト":
+    class_name_list = [0, 0]
+if gender == "F":
+    gender_list = [1]
+elif gender == "M":
+    gender_list = [0]
+
+input_data = [count_1, routing_flg, period]
+input_data.extend(campaign_name_list)
+input_data.extend(class_name_list)
+input_data.extend(gender_list)
+
+print(model.predict([input_data]))
+print(model.predict_proba([input_data]))
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
